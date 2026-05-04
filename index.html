@@ -214,18 +214,39 @@
             requestAnimationFrame(gameLoop);
         }
 
-        // ==================== IMPROVED MOBILE TOUCH ====================
-        let touchStartX = 0;
+              // ==================== FAST MOBILE TOUCH ====================
+        let isTouching = false;
+        let lastTouchX = 0;
 
         canvas.addEventListener('touchstart', e => {
+            e.preventDefault();
             if (!gameRunning) return;
-            touchStartX = e.changedTouches[0].screenX;
             
-            // Tap to swing hammer
+            isTouching = true;
+            lastTouchX = e.changedTouches[0].screenX;
+            
+            // Tap anywhere to swing hammer
             if (!hammerSwing) {
                 hammerSwing = true;
                 swingTimer = 14;
             }
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (!gameRunning || !isTouching) return;
+            
+            const currentX = e.changedTouches[0].screenX;
+            const diff = currentX - lastTouchX;
+            
+            playerX += diff * 2.5;   // ← Much faster sliding (you can change 2.5 to 2.0 or 3.0)
+            lastTouchX = currentX;
+            
+            playerX = Math.max(20, Math.min(680, playerX));
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            isTouching = false;
         });
 
         canvas.addEventListener('touchmove', e => {
