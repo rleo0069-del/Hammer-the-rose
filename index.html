@@ -4,13 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hammer the Rose 🌹</title>
-    
-    <!-- Rose Favicon -->
     <link rel="icon" href="https://em-content.zobj.net/source/twitter/376/rose_1f339.png" type="image/png">
-    <link rel="apple-touch-icon" href="https://em-content.zobj.net/source/twitter/376/rose_1f339.png">
-    
     <style>
-        /* your existing styles */
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        body { margin:0; padding:0; background:#0a1f0a; display:flex; justify-content:center; align-items:center; min-height:100vh; font-family:'Press Start 2P',cursive; color:white; overflow:hidden; }
+        #game-container { position:relative; box-shadow:0 0 60px #900; }
+        canvas { display:block; image-rendering:pixelated; }
+        #ui { position:absolute; top:15px; left:20px; right:20px; display:flex; justify-content:space-between; z-index:10; pointer-events:none; }
+        .score { font-size:22px; text-shadow:0 0 12px #ff1493; }
+        #start-screen, #game-over-screen, #pause-screen { position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.93); display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:100; }
+        h1 { font-size:52px; color:#c00; text-shadow:0 0 30px #f66; }
+        button { padding:16px 50px; font-size:24px; background:#c00; color:white; border:4px solid white; cursor:pointer; margin:10px; }
+        button:hover { background:#f66; transform:scale(1.1); }
     </style>
 </head>
 <body>
@@ -26,8 +31,9 @@
 
         <div id="start-screen">
             <h1>HAMMER THE ROSE</h1>
-            <p style="font-size:36px;margin:10px;">🌹🔨🌹</p>
+            <p style="font-size:36px;margin:10px;">🌺🔨🌺</p>
             <button id="start-btn">START GAME</button>
+            <div style="margin-top:20px;font-size:14px;">M = Music • P = Pause</div>
         </div>
 
         <div id="pause-screen" style="display:none;">
@@ -47,70 +53,94 @@
         const ctx = canvas.getContext('2d');
         
         let playerX = 360;
-        let roses = [], thorns = [], particles = [];
+        let roses = [], thorns = [], bees = [], particles = [];
         let score = 0, lives = 3, level = 1, combo = 0;
         let gameRunning = false, paused = false, hammerSwing = false, swingTimer = 0;
-        let lastSpawn = 0, highScore = localStorage.getItem('htrHS') || 0;
+        let lastSpawn = 0, musicOn = true, highScore = localStorage.getItem('htrHS') || 0;
         const keys = {};
+        
+        let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let musicOsc = null;
 
         function playSquish() {
             try {
-                const audio = new (window.AudioContext || window.webkitAudioContext)();
-                const noise = audio.createBufferSource();
-                const buffer = audio.createBuffer(1, audio.sampleRate * 0.4, audio.sampleRate);
-                const data = buffer.getChannelData(0);
-                for (let i = 0; i < buffer.length; i++) data[i] = Math.random() * 2 - 1;
-                noise.buffer = buffer;
-                const filter = audio.createBiquadFilter();
-                filter.type = 'lowpass'; filter.frequency.value = 480;
-                noise.connect(filter).connect(audio.destination);
-                noise.start();
+                const n = audioCtx.createBufferSource();
+                const b = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.45, audioCtx.sampleRate);
+                const d = b.getChannelData(0);
+                for (let i = 0; i < b.length; i++) d[i] = Math.random() * 2 - 1;
+                n.buffer = b;
+                const f = audioCtx.createBiquadFilter();
+                f.type = 'lowpass'; f.frequency.value = 420;
+                n.connect(f).connect(audioCtx.destination);
+                n.start();
             } catch(e) {}
+        }
+
+        function toggleMusic() {
+            musicOn = !musicOn;
+            if (musicOn && gameRunning) startMusic();
+            else if (musicOsc) { musicOsc.stop(); musicOsc = null; }
+        }
+
+        function startMusic() {
+            if (musicOsc) musicOsc.stop();
+            musicOsc = audioCtx.createOscillator();
+            musicOsc.type = 'sawtooth';
+            musicOsc.frequency.setValueAtTime(180, audioCtx.currentTime);
+            const gain = audioCtx.createGain();
+            gain.gain.value = 0.06;
+            musicOsc.connect(gain).connect(audioCtx.destination);
+            musicOsc.start();
         }
 
         function drawBackground() {
             const sky = ctx.createLinearGradient(0,0,0,380);
-            sky.addColorStop(0, '#1a2f1a');
-            sky.addColorStop(1, '#0f3a20');
-            ctx.fillStyle = sky; ctx.fillRect(0, 0, 800, 380);
+            sky.addColorStop(0, '#1a2a1a'); sky.addColorStop(1, '#0f3a20');
+            ctx.fillStyle = sky; ctx.fillRect(0,0,800,380);
             
-            ctx.fillStyle = '#0a2a0a'; ctx.fillRect(0, 380, 800, 220);
+            ctx.fillStyle = '#0a2a0a'; ctx.fillRect(0,380,800,220);
             
             ctx.strokeStyle = '#1a5a1a'; ctx.lineWidth = 4;
-            for (let i = 0; i < 800; i += 12) {
+            for (let i = 0; i < 800; i += 11) {
                 ctx.beginPath();
                 ctx.moveTo(i, 600);
-                ctx.quadraticCurveTo(i + 9, 415, i + 19, 600);
+                ctx.quadraticCurveTo(i + 8, 410, i + 17, 600);
                 ctx.stroke();
             }
         }
 
+        // Scary spiked club
         function drawPlayer() {
-            ctx.fillStyle = '#4a2a0f'; ctx.fillRect(playerX + 38, 405, 14, 145); // handle
-            ctx.fillStyle = '#444'; ctx.fillRect(playerX + 15, 395, 70, 45);     // club head
-            ctx.fillStyle = '#c00';
-            ctx.fillRect(playerX + 20, 375, 9, 32);
-            ctx.fillRect(playerX + 42, 368, 9, 38);
-            ctx.fillRect(playerX + 65, 375, 9, 32);
-            ctx.font = '62px Arial'; ctx.fillText('🔨', playerX + 8, 475);
+            ctx.fillStyle = '#3a1f0a'; ctx.fillRect(playerX + 37, 400, 16, 155); // thick handle
+            ctx.fillStyle = '#333'; ctx.fillRect(playerX + 10, 390, 78, 48);     // heavy head
+            ctx.fillStyle = '#900';
+            ctx.fillRect(playerX + 15, 370, 12, 35);
+            ctx.fillRect(playerX + 35, 365, 10, 42);
+            ctx.fillRect(playerX + 55, 370, 12, 35);
+            ctx.fillRect(playerX + 72, 375, 9, 30);
+            ctx.font = '65px Arial'; ctx.fillText('🔨', playerX + 5, 480);
         }
 
         function spawnRose() { roses.push({x: Math.random()*720+40, y:-60, speed:4.8+level*0.5}); }
         function spawnThorn() { thorns.push({x: Math.random()*720+40, y:-60, speed:5.8+level*0.6}); }
+        function spawnBee() { 
+            if (Math.random() < 0.12) bees.push({x: Math.random()*700+50, y: Math.random()*250+80, speed: 3.5 + level*0.3}); 
+        }
 
         function createParticles(x, y, color, count) {
             for (let i = 0; i < count; i++) {
-                particles.push({x, y, vx:(Math.random()-0.5)*12, vy:(Math.random()-0.5)*11-5, life:38, color, size:Math.random()*8+4});
+                particles.push({x, y, vx:(Math.random()-0.5)*13, vy:(Math.random()-0.5)*12-4, life:40, color, size:Math.random()*9+4});
             }
         }
 
         function updateObjects() {
+            // Roses
             for (let i = roses.length-1; i >= 0; i--) {
                 roses[i].y += roses[i].speed;
                 if (roses[i].y > 410 && roses[i].x > playerX-40 && roses[i].x < playerX+130) {
-                    score += 25 * (1 + Math.floor(combo/5));
+                    score += 30 * (1 + Math.floor(combo/5));
                     combo++;
-                    createParticles(roses[i].x+20, roses[i].y+20, '#ff1493', 22);
+                    createParticles(roses[i].x+20, roses[i].y+20, '#ff1493', 25);
                     roses.splice(i,1);
                 } else if (roses[i].y > 650) {
                     playSquish();
@@ -118,40 +148,58 @@
                 }
             }
             
+            // Thorns
             for (let i = thorns.length-1; i >= 0; i--) {
                 thorns[i].y += thorns[i].speed;
                 const t = thorns[i];
-                if (hammerSwing && t.y > 370 && t.x > playerX-40 && t.x < playerX+130) {
-                    score += 55; combo++;
-                    createParticles(t.x+20, t.y+20, '#8B4513', 25);
+                if (hammerSwing && t.y > 360 && t.x > playerX-40 && t.x < playerX+130) {
+                    score += 60; combo++;
+                    createParticles(t.x+20, t.y+20, '#8B4513', 28);
                     thorns.splice(i,1);
                 } else if (t.y > 410 && t.x > playerX-40 && t.x < playerX+130) {
                     lives--; combo = 0;
-                    createParticles(t.x+20, t.y+20, '#ff0000', 30);
+                    createParticles(t.x+20, t.y+20, '#ff0000', 35);
                     thorns.splice(i,1);
                     if (lives <= 0) endGame();
                 } else if (t.y > 650) thorns.splice(i,1);
             }
             
+            // Bees - deadly!
+            for (let i = bees.length-1; i >= 0; i--) {
+                bees[i].x += bees[i].speed;
+                if (bees[i].x > 850) { bees.splice(i,1); continue; }
+                
+                if (hammerSwing && bees[i].x > playerX-40 && bees[i].x < playerX+130 && bees[i].y > 380 && bees[i].y < 480) {
+                    lives = 0;
+                    createParticles(bees[i].x, bees[i].y, '#ff0', 40);
+                    endGame();
+                    bees.splice(i,1);
+                }
+            }
+            
+            // Particles
             for (let i = particles.length-1; i >= 0; i--) {
                 const p = particles[i];
-                p.x += p.vx; p.y += p.vy; p.vy += 0.35; p.life--; p.size *= 0.95;
+                p.x += p.vx; p.y += p.vy; p.vy += 0.38; p.life--; p.size *= 0.95;
                 if (p.life <= 0) particles.splice(i,1);
             }
         }
 
         function drawObjects() {
-            ctx.font = '44px Arial';
-            for (let r of roses) ctx.fillText('🌹', r.x, r.y + 38);
+            ctx.font = '46px Arial';
+            for (let r of roses) ctx.fillText('🌺', r.x, r.y + 38);
             
-            ctx.font = '38px Arial';
+            ctx.font = '36px Arial';
             for (let t of thorns) {
-                ctx.fillStyle = '#8B4513';
-                ctx.fillText('📍', t.x, t.y + 35);
+                ctx.fillStyle = '#5c3311';
+                ctx.fillText('🪡', t.x, t.y + 32);
             }
             
+            ctx.font = '34px Arial';
+            for (let b of bees) ctx.fillText('🐝', b.x, b.y);
+            
             for (let p of particles) {
-                ctx.globalAlpha = p.life / 40;
+                ctx.globalAlpha = p.life / 42;
                 ctx.fillStyle = p.color;
                 ctx.fillRect(p.x, p.y, p.size, p.size);
             }
@@ -163,15 +211,16 @@
             ctx.clearRect(0, 0, 800, 600);
             drawBackground();
             
-            if (keys['ArrowLeft'] || keys['a']) playerX -= 9;
-            if (keys['ArrowRight'] || keys['d']) playerX += 9;
+            if (keys['ArrowLeft'] || keys['a']) playerX -= 9.5;
+            if (keys['ArrowRight'] || keys['d']) playerX += 9.5;
             playerX = Math.max(10, Math.min(700, playerX));
             
-            if (Date.now() - lastSpawn > 620) {
-                Math.random() < 0.6 ? spawnRose() : spawnThorn();
+            if (Date.now() - lastSpawn > 580) {
+                Math.random() < 0.55 ? spawnRose() : spawnThorn();
+                spawnBee();
                 lastSpawn = Date.now();
             }
-            if (score > level * 900) level++;
+            if (score > level * 950) level++;
             
             updateObjects();
             drawObjects();
@@ -180,7 +229,7 @@
             if (hammerSwing) { swingTimer--; if (swingTimer <= 0) hammerSwing = false; }
             
             document.getElementById('score-display').textContent = `SCORE: ${score.toString().padStart(5,'0')}`;
-            document.getElementById('combo-display').textContent = combo > 5 ? `COMBO x${Math.floor(combo/4)}` : '';
+            document.getElementById('combo-display').textContent = combo > 6 ? `COMBO x${Math.floor(combo/4)}` : '';
             document.getElementById('level-display').textContent = `LVL ${level}`;
             document.getElementById('lives-display').innerHTML = '❤️'.repeat(lives);
             
@@ -191,13 +240,15 @@
             document.getElementById('start-screen').style.display = 'none';
             gameRunning = true; paused = false;
             score = 0; lives = 3; level = 1; combo = 0;
-            roses = []; thorns = []; particles = [];
+            roses = []; thorns = []; bees = []; particles = [];
             playerX = 360; lastSpawn = Date.now();
+            if (musicOn) startMusic();
             gameLoop();
         }
 
         function endGame() {
             gameRunning = false;
+            if (musicOsc) { musicOsc.stop(); musicOsc = null; }
             if (score > highScore) {
                 highScore = score;
                 localStorage.setItem('htrHS', highScore);
@@ -212,7 +263,6 @@
             if (!paused) gameLoop();
         }
 
-        // Event Listeners
         document.getElementById('start-btn').addEventListener('click', startGame);
         document.getElementById('restart-btn').addEventListener('click', () => {
             document.getElementById('game-over-screen').style.display = 'none';
@@ -221,11 +271,9 @@
 
         window.addEventListener('keydown', e => {
             keys[e.key] = true;
-            if (e.key === ' ' && gameRunning && !hammerSwing) {
-                e.preventDefault();
-                hammerSwing = true; swingTimer = 14;
-            }
-            if (e.key.toLowerCase() === 'p' && gameRunning) togglePause();
+            if (e.key === ' ' && gameRunning && !hammerSwing) { e.preventDefault(); hammerSwing = true; swingTimer = 14; }
+            if (e.key.toLowerCase() === 'p') togglePause();
+            if (e.key.toLowerCase() === 'm') toggleMusic();
         });
         window.addEventListener('keyup', e => keys[e.key] = false);
     </script>
