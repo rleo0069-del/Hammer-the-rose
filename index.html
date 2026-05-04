@@ -6,26 +6,43 @@
     <title>Hammer the Rose 🌹</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
-        body { margin:0; padding:0; background:#0f2a0f; display:flex; justify-content:center; align-items:center; min-height:100vh; font-family:'Press Start 2P',cursive; color:white; overflow:hidden; }
+        body { margin:0; padding:0; background:#0a1f0a; display:flex; justify-content:center; align-items:center; min-height:100vh; font-family:'Press Start 2P',cursive; color:white; overflow:hidden; }
         #game-container { position:relative; box-shadow:0 0 50px #c00; }
-        canvas { display:block; image-rendering:pixelated; }
+        canvas { display:block; image-rendering:pixelated; background:#0a1f0a; }
+        #ui { position:absolute; top:15px; left:20px; right:20px; display:flex; justify-content:space-between; z-index:10; pointer-events:none; }
+        .score { font-size:22px; text-shadow:0 0 12px #ff1493; }
+        #start-screen, #game-over-screen, #pause-screen { position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:100; }
+        h1 { font-size:52px; color:#c00; text-shadow:0 0 30px #f66; margin:0; }
+        button { padding:15px 50px; font-size:24px; background:#c00; color:white; border:4px solid #fff; cursor:pointer; margin:15px; }
+        button:hover { background:#f66; transform:scale(1.1); }
     </style>
 </head>
 <body>
     <div id="game-container">
         <canvas id="game" width="800" height="600"></canvas>
         
-        <div id="ui" style="position:absolute;top:15px;left:20px;right:20px;display:flex;justify-content:space-between;z-index:10;pointer-events:none;">
+        <div id="ui">
             <div class="score" id="score-display">SCORE: 00000</div>
             <div class="score" id="combo-display"></div>
             <div class="score" id="level-display">LVL 1</div>
             <div class="score" id="lives-display">❤️❤️❤️</div>
         </div>
 
-        <!-- Start, Pause, Game Over screens same as before -->
-        <div id="start-screen" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:100;">
-            <h1 style="font-size:52px;color:#c00;text-shadow:0 0 30px #f66;">HAMMER THE ROSE</h1>
-            <button id="start-btn" style="margin-top:20px;padding:15px 50px;font-size:24px;">START GAME</button>
+        <div id="start-screen">
+            <h1>HAMMER THE ROSE</h1>
+            <p style="font-size:32px; margin:10px;">🌹🔨🌹</p>
+            <button id="start-btn">START GAME</button>
+        </div>
+
+        <div id="pause-screen" style="display:none;">
+            <h1>PAUSED</h1>
+            <button onclick="togglePause()">RESUME</button>
+        </div>
+
+        <div id="game-over-screen" style="display:none;">
+            <h1>GAME OVER</h1>
+            <p id="final-score" style="font-size:26px;"></p>
+            <button id="restart-btn">PLAY AGAIN</button>
         </div>
     </div>
 
@@ -36,45 +53,62 @@
         let playerX = 360;
         let roses = [], thorns = [], particles = [];
         let score = 0, lives = 3, level = 1, combo = 0;
-        let gameRunning = false, hammerSwing = false, swingTimer = 0;
-        let lastSpawn = 0;
+        let gameRunning = false, paused = false, hammerSwing = false, swingTimer = 0;
+        let lastSpawn = 0, highScore = localStorage.getItem('htrHS') || 0;
+        const keys = {};
 
-        // New grass background
+        function playSquish() {
+            try {
+                const audio = new (window.AudioContext || window.webkitAudioContext)();
+                const noise = audio.createBufferSource();
+                const buffer = audio.createBuffer(1, audio.sampleRate * 0.35, audio.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < buffer.length; i++) data[i] = Math.random() * 2 - 1;
+                noise.buffer = buffer;
+                const filter = audio.createBiquadFilter();
+                filter.type = 'lowpass'; filter.frequency.value = 450;
+                noise.connect(filter).connect(audio.destination);
+                noise.start();
+            } catch(e) {}
+        }
+
         function drawBackground() {
             // Sky
-            ctx.fillStyle = '#1a3a2a';
+            const sky = ctx.createLinearGradient(0,0,0,380);
+            sky.addColorStop(0, '#1a2a1a');
+            sky.addColorStop(1, '#0f3a1f');
+            ctx.fillStyle = sky;
             ctx.fillRect(0, 0, 800, 380);
             
-            // Grass field
-            ctx.fillStyle = '#0f3a0f';
+            // Grass
+            ctx.fillStyle = '#0a2a0a';
             ctx.fillRect(0, 380, 800, 220);
             
             // Grass blades
             ctx.strokeStyle = '#1a5a1a';
-            ctx.lineWidth = 4;
-            for (let i = 0; i < 800; i += 12) {
+            ctx.lineWidth = 3.5;
+            for (let i = 0; i < 800; i += 11) {
                 ctx.beginPath();
                 ctx.moveTo(i, 600);
-                ctx.quadraticCurveTo(i + 8, 400, i + 18, 600);
+                ctx.quadraticCurveTo(i + 7, 410, i + 16, 600);
                 ctx.stroke();
             }
         }
 
-        // Better club-style hammer
         function drawPlayer() {
-            // Wooden handle
-            ctx.fillStyle = '#5c3311';
-            ctx.fillRect(playerX + 38, 410, 14, 140);
+            // Handle
+            ctx.fillStyle = '#4a2a0f';
+            ctx.fillRect(playerX + 38, 405, 14, 145);
             
-            // Metal club head
-            ctx.fillStyle = '#555';
-            ctx.fillRect(playerX + 12, 395, 68, 42);
+            // Club head
+            ctx.fillStyle = '#444';
+            ctx.fillRect(playerX + 15, 395, 70, 45);
             
-            // Spikes on club
+            // Red spikes
             ctx.fillStyle = '#c00';
-            ctx.fillRect(playerX + 18, 380, 8, 25);
-            ctx.fillRect(playerX + 38, 370, 8, 30);
-            ctx.fillRect(playerX + 65, 380, 8, 25);
+            ctx.fillRect(playerX + 20, 375, 9, 32);
+            ctx.fillRect(playerX + 42, 368, 9, 35);
+            ctx.fillRect(playerX + 65, 375, 9, 32);
             
             ctx.font = '62px Arial';
             ctx.fillText('🔨', playerX + 8, 475);
@@ -83,42 +117,20 @@
         function spawnRose() { roses.push({x: Math.random()*720+40, y:-60, speed:4.8+level*0.5}); }
         function spawnThorn() { thorns.push({x: Math.random()*720+40, y:-60, speed:5.8+level*0.6}); }
 
-        // Brown pin-like thorns
-        function drawObjects() {
-            ctx.font = '42px Arial';
-            for (let r of roses) ctx.fillText('🌹', r.x, r.y + 38);   // Real rose emoji looks good
-
-            ctx.font = '38px Arial';
-            for (let t of thorns) {
-                ctx.fillStyle = '#8B4513';   // Brown
-                ctx.fillText('📍', t.x, t.y + 35);   // Pin-like
+        function createParticles(x, y, color, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random()-0.5)*12,
+                    vy: (Math.random()-0.5)*10 - 4,
+                    life: 38,
+                    color,
+                    size: Math.random()*8 + 4
+                });
             }
         }
 
-        // Squish sound when rose hits ground
-        function playSquish() {
-            const audio = new AudioContext();
-            const noise = audio.createBufferSource();
-            const buffer = audio.createBuffer(1, audio.sampleRate * 0.4, audio.sampleRate);
-            const data = buffer.getChannelData(0);
-            for (let i = 0; i < buffer.length; i++) data[i] = Math.random() * 2 - 1;
-            noise.buffer = buffer;
-            const filter = audio.createBiquadFilter();
-            filter.type = 'lowpass'; filter.frequency.value = 600;
-            noise.connect(filter).connect(audio.destination);
-            noise.start();
-        }
-
-        // Rest of the game logic (same as before, but with new squish)
-        // ... (I'll keep it short here)
-
-        // In updateObjects when rose falls off screen:
-        // else if (roses[i].y > 650) {
-        //     playSquish();
-        //     roses.splice(i,1);
-        // }
-
-        console.log('🌹 Hammer the Rose - Next Level Ready!');
-    </script>
-</body>
-</html>
+        function updateObjects() {
+            // Roses
+            for (let i = roses.length-1; i >= 0; i--) {
+                roses[i
