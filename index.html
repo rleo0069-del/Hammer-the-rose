@@ -296,6 +296,22 @@
             if (score > highScore) localStorage.setItem('htrHS', highScore = score);
             document.getElementById('final-score').innerHTML = `FINAL SCORE: ${score}<br>HIGH SCORE: ${highScore}`;
             document.getElementById('game-over-screen').style.display = 'flex';
+
+            // Add this after endGame() function
+function showHighScores() {
+    let scores = JSON.parse(localStorage.getItem('htrScores')) || [];
+    scores.push({score: score, date: new Date().toLocaleDateString()});
+    scores.sort((a,b) => b.score - a.score);
+    scores = scores.slice(0, 5); // top 5
+    localStorage.setItem('htrScores', JSON.stringify(scores));
+    
+    let text = "🏆 HIGH SCORES 🏆\n\n";
+    scores.forEach((s,i) => text += `${i+1}. ${s.score} pts\n`);
+    alert(text);
+}
+
+// Call it in endGame() like this:
+showHighScores();
         }
 
         function togglePause() {
