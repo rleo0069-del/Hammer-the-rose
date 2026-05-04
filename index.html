@@ -13,10 +13,11 @@
         #ui { position:absolute; top:15px; left:20px; right:20px; display:flex; justify-content:space-between; z-index:10; pointer-events:none; }
         .score { font-size:22px; text-shadow:0 0 12px #ff1493; }
         #start-screen, #game-over-screen, #pause-screen { position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.93); display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:100; text-align:center; }
-        h1 { font-size:52px; color:#c00; text-shadow:0 0 30px #f66; }
-        button { padding:16px 50px; font-size:24px; background:#c00; color:white; border:4px solid white; cursor:pointer; margin:10px; }
-        button:hover { background:#f66; transform:scale(1.1); }
-        .instructions { font-size:15px; line-height:1.6; max-width:580px; margin-top:20px; }
+        h1 { font-size:58px; color:#c00; text-shadow:0 0 40px #f66, 0 0 60px #f00; margin:0; animation: glow 2s infinite alternate; }
+        button { padding:18px 60px; font-size:26px; background:#c00; color:white; border:5px solid white; cursor:pointer; margin:20px; box-shadow:0 0 30px #f66; transition: all 0.3s; }
+        button:hover, button.pulse { transform:scale(1.12); box-shadow:0 0 50px #ff0; }
+        .instructions { font-size:15px; line-height:1.7; max-width:580px; margin-top:25px; }
+        @keyframes glow { from { text-shadow:0 0 30px #f66; } to { text-shadow:0 0 50px #f00, 0 0 70px #ff0; } }
     </style>
 </head>
 <body>
@@ -32,7 +33,7 @@
 
         <div id="start-screen">
             <h1>HAMMER THE ROSE</h1>
-            <p style="font-size:36px;margin:10px;">🌺🔨🌺</p>
+            <p style="font-size:42px;margin:15px;">🌺🔨🌺</p>
             <button id="start-btn">START GAME</button>
             
             <div class="instructions">
@@ -56,6 +57,7 @@
     </div>
 
     <script>
+        // === ALL PREVIOUS GAME LOGIC (kept everything) ===
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
         
@@ -138,7 +140,6 @@
         }
 
         function updateObjects() {
-            // Roses, Thorns, Bees, Particles logic (same as before)
             for (let i = roses.length-1; i >= 0; i--) {
                 roses[i].y += roses[i].speed;
                 if (roses[i].y > 410 && roses[i].x > playerX-40 && roses[i].x < playerX+130) {
@@ -155,4 +156,131 @@
             for (let i = thorns.length-1; i >= 0; i--) {
                 thorns[i].y += thorns[i].speed;
                 const t = thorns[i];
-                if (hammerSwing && t.y >
+                if (hammerSwing && t.y > 360 && t.x > playerX-40 && t.x < playerX+130) {
+                    score += 60; combo++;
+                    createParticles(t.x+20, t.y+20, '#8B4513', 28);
+                    thorns.splice(i,1);
+                } else if (t.y > 410 && t.x > playerX-40 && t.x < playerX+130) {
+                    lives--; combo = 0;
+                    createParticles(t.x+20, t.y+20, '#ff0000', 35);
+                    thorns.splice(i,1);
+                    if (lives <= 0) endGame();
+                } else if (t.y > 650) thorns.splice(i,1);
+            }
+            
+            for (let i = bees.length-1; i >= 0; i--) {
+                bees[i].x += bees[i].speed;
+                if (bees[i].x > 850) { bees.splice(i,1); continue; }
+                if (hammerSwing && bees[i].x > playerX-40 && bees[i].x < playerX+130 && bees[i].y > 380 && bees[i].y < 480) {
+                    lives = 0;
+                    createParticles(bees[i].x, bees[i].y, '#ff0', 40);
+                    endGame();
+                    bees.splice(i,1);
+                }
+            }
+            
+            for (let i = particles.length-1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx; p.y += p.vy; p.vy += 0.38; p.life--; p.size *= 0.95;
+                if (p.life <= 0) particles.splice(i,1);
+            }
+        }
+
+        function drawObjects() {
+            ctx.font = '46px Arial';
+            for (let r of roses) ctx.fillText('🌺', r.x, r.y + 38);
+            
+            ctx.font = '36px Arial';
+            for (let t of thorns) {
+                ctx.fillStyle = '#5c3311';
+                ctx.fillText('🪡', t.x, t.y + 32);
+            }
+            
+            ctx.font = '34px Arial';
+            for (let b of bees) ctx.fillText('🐝', b.x, b.y);
+            
+            for (let p of particles) {
+                ctx.globalAlpha = p.life / 42;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, p.size, p.size);
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function gameLoop() {
+            if (!gameRunning || paused) return;
+            ctx.clearRect(0, 0, 800, 600);
+            drawBackground();
+            
+            if (keys['ArrowLeft'] || keys['a']) playerX -= 9.5;
+            if (keys['ArrowRight'] || keys['d']) playerX += 9.5;
+            playerX = Math.max(10, Math.min(700, playerX));
+            
+            if (Date.now() - lastSpawn > 580) {
+                Math.random() < 0.55 ? spawnRose() : spawnThorn();
+                spawnBee();
+                lastSpawn = Date.now();
+            }
+            if (score > level * 950) level++;
+            
+            updateObjects();
+            drawObjects();
+            drawPlayer();
+            
+            if (hammerSwing) { swingTimer--; if (swingTimer <= 0) hammerSwing = false; }
+            
+            document.getElementById('score-display').textContent = `SCORE: ${score.toString().padStart(5,'0')}`;
+            document.getElementById('combo-display').textContent = combo > 6 ? `COMBO x${Math.floor(combo/4)}` : '';
+            document.getElementById('level-display').textContent = `LVL ${level}`;
+            document.getElementById('lives-display').innerHTML = '❤️'.repeat(lives);
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            document.getElementById('start-screen').style.display = 'none';
+            gameRunning = true; paused = false;
+            score = 0; lives = 3; level = 1; combo = 0;
+            roses = []; thorns = []; bees = []; particles = [];
+            playerX = 360; lastSpawn = Date.now();
+            if (musicOn) startMusic();
+            gameLoop();
+        }
+
+        function endGame() {
+            gameRunning = false;
+            if (musicOsc) { musicOsc.stop(); musicOsc = null; }
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('htrHS', highScore);
+            }
+            document.getElementById('final-score').innerHTML = `FINAL SCORE: ${score}<br>HIGH SCORE: ${highScore}`;
+            document.getElementById('game-over-screen').style.display = 'flex';
+        }
+
+        function togglePause() {
+            paused = !paused;
+            document.getElementById('pause-screen').style.display = paused ? 'flex' : 'none';
+            if (!paused) gameLoop();
+        }
+
+        // Button pulse effect
+        const startBtn = document.getElementById('start-btn');
+        setInterval(() => startBtn.classList.toggle('pulse'), 800);
+
+        document.getElementById('start-btn').addEventListener('click', startGame);
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            document.getElementById('game-over-screen').style.display = 'none';
+            startGame();
+        });
+
+        window.addEventListener('keydown', e => {
+            keys[e.key] = true;
+            if (e.key === ' ' && gameRunning && !hammerSwing) { e.preventDefault(); hammerSwing = true; swingTimer = 14; }
+            if (e.key.toLowerCase() === 'p') togglePause();
+            if (e.key.toLowerCase() === 'm') toggleMusic();
+        });
+        window.addEventListener('keyup', e => keys[e.key] = false);
+    </script>
+</body>
+</html>
