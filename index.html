@@ -57,7 +57,6 @@
     </div>
 
     <script>
-        // === ALL PREVIOUS GAME LOGIC (kept everything) ===
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
         
@@ -71,18 +70,30 @@
         let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         let musicOsc = null;
 
-        function playSquish() {
-            try {
-                const n = audioCtx.createBufferSource();
-                const b = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.45, audioCtx.sampleRate);
-                const d = b.getChannelData(0);
-                for (let i = 0; i < b.length; i++) d[i] = Math.random() * 2 - 1;
-                n.buffer = b;
-                const f = audioCtx.createBiquadFilter();
-                f.type = 'lowpass'; f.frequency.value = 420;
-                n.connect(f).connect(audioCtx.destination);
-                n.start();
-            } catch(e) {}
+        // Uplifting happy melody notes
+        const melody = [523, 659, 784, 659, 523, 784, 659, 523]; // C E G E C G E C
+        let melodyIndex = 0;
+
+        function startMusic() {
+            if (musicOsc) musicOsc.stop();
+            
+            musicOsc = audioCtx.createOscillator();
+            musicOsc.type = 'triangle';           // soft and happy
+            musicOsc.frequency.setValueAtTime(melody[0], audioCtx.currentTime);
+            
+            const gain = audioCtx.createGain();
+            gain.gain.value = 0.12;
+            
+            musicOsc.connect(gain).connect(audioCtx.destination);
+            musicOsc.start();
+
+            // Simple melody loop
+            setInterval(() => {
+                if (musicOn && gameRunning && musicOsc) {
+                    melodyIndex = (melodyIndex + 1) % melody.length;
+                    musicOsc.frequency.setValueAtTime(melody[melodyIndex], audioCtx.currentTime);
+                }
+            }, 280);
         }
 
         function toggleMusic() {
@@ -91,16 +102,21 @@
             else if (musicOsc) { musicOsc.stop(); musicOsc = null; }
         }
 
-        function startMusic() {
-            if (musicOsc) musicOsc.stop();
-            musicOsc = audioCtx.createOscillator();
-            musicOsc.type = 'sawtooth';
-            musicOsc.frequency.setValueAtTime(180, audioCtx.currentTime);
-            const gain = audioCtx.createGain();
-            gain.gain.value = 0.06;
-            musicOsc.connect(gain).connect(audioCtx.destination);
-            musicOsc.start();
+        function playSquish() {
+            try {
+                const n = audioCtx.createBufferSource();
+                const b = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.4, audioCtx.sampleRate);
+                const d = b.getChannelData(0);
+                for (let i = 0; i < b.length; i++) d[i] = Math.random() * 2 - 1;
+                n.buffer = b;
+                const f = audioCtx.createBiquadFilter();
+                f.type = 'lowpass'; f.frequency.value = 520;
+                n.connect(f).connect(audioCtx.destination);
+                n.start();
+            } catch(e) {}
         }
+
+        // ... (rest of the game code is the same as last version - drawBackground, drawPlayer, etc.)
 
         function drawBackground() {
             const sky = ctx.createLinearGradient(0,0,0,380);
@@ -130,7 +146,7 @@
         function spawnRose() { roses.push({x: Math.random()*720+40, y:-60, speed:4.8+level*0.5}); }
         function spawnThorn() { thorns.push({x: Math.random()*720+40, y:-60, speed:5.8+level*0.6}); }
         function spawnBee() { 
-            if (Math.random() < 0.14) bees.push({x: Math.random()*700+50, y: Math.random()*220+60, speed: 3.8 + level*0.4}); 
+            if (Math.random() < 0.13) bees.push({x: Math.random()*700+50, y: Math.random()*220+60, speed: 3.8 + level*0.4}); 
         }
 
         function createParticles(x, y, color, count) {
@@ -140,6 +156,7 @@
         }
 
         function updateObjects() {
+            // Roses
             for (let i = roses.length-1; i >= 0; i--) {
                 roses[i].y += roses[i].speed;
                 if (roses[i].y > 410 && roses[i].x > playerX-40 && roses[i].x < playerX+130) {
@@ -152,7 +169,7 @@
                     roses.splice(i,1);
                 }
             }
-            
+            // Thorns, Bees, Particles (same as before)
             for (let i = thorns.length-1; i >= 0; i--) {
                 thorns[i].y += thorns[i].speed;
                 const t = thorns[i];
@@ -264,7 +281,6 @@
             if (!paused) gameLoop();
         }
 
-        // Button pulse effect
         const startBtn = document.getElementById('start-btn');
         setInterval(() => startBtn.classList.toggle('pulse'), 800);
 
